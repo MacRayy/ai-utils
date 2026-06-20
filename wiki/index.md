@@ -51,4 +51,4 @@ Map of content. Pages carry their own one-line summary at the top; this index qu
 
 ## Workflows
 
-- [`workflows/commit-style.md`](workflows/commit-style.md) — **Commit message style** — Gitmoji prefix + Angular-style `[type]: subject`; no Claude co-author trailer.
+- [`workflows/commit-style.md`](workflows/commit-style.md) — **Commit message style** — Gitmoji prefix + Conventional Commits 1.0.0 (`type(scope): subject`); no Claude co-author trailer.
