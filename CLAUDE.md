@@ -46,6 +46,37 @@ Every seed follows the same three-part shape:
 with the user before writing files. Walk these with the user first; don't write files with
 placeholders still in them.
 
+## Project knowledge base — `wiki/`
+
+`wiki/` is an LLM-maintained knowledge base for this project. It captures everything the code
+alone doesn't show: architectural patterns, decisions and their rationale, bug postmortems,
+known hacks and tech debt, integration contracts, runbooks, in-flight projects, and the
+domain glossary.
+
+**On every non-trivial task in this project, before starting work:**
+
+- Read `wiki/CLAUDE.md` — the schema. It defines when to update the wiki and how to write
+  pages. Treat the schema's "When to update" table as a checklist for the current task.
+- Skim `wiki/index.md` — the map of content. Find the pages relevant to the area you're
+  touching. Read them. The wiki is the fastest way to absorb context that took prior sessions
+  hours to learn.
+
+**While working:**
+
+- If a decision is made, a non-obvious bug is fixed, a hack is added, an integration changes,
+  a domain term comes up, or an incident is handled — create or update the relevant wiki
+  page per the schema. Append a one-line entry to `wiki/_log.md`. Wiki updates land in the
+  same commit (or PR) as the code change that triggered them, so `git log` ties them
+  together.
+- The wiki is excluded from your formatter and type-checker (see `wiki/CLAUDE.md` §
+  Exclusions). Mirror that exclusion in your tooling so the agent isn't fighting lint
+  warnings on markdown.
+
+**For new feature work:**
+
+`wiki/architecture.md` contains this project's layered model. Update it as the system evolves;
+reference it when scaffolding new features.
+
 ## Working on seeds in this repo
 
 - Seeds are **content**, not code. There is no build, no test runner, no lint. Edits are reviewed
