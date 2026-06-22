@@ -140,6 +140,32 @@ the blindfold survives — preserve it and the agent stays useful, break it and 
 collapses into either rubber-stamping or manufactured alternatives. Worth remembering when
 the next "what if it could also..." question comes up.
 
+## First field test
+
+First spin on a real production bug — a debugging-investigation task that arguably wasn't
+the architect's home turf. From wiki + tests + schema alone, the architect correctly
+identified the root cause (a forgotten TODO stub in a DTO mapper), and went further:
+flagged this as the third recurrence of the same "frontend stubs a value while waiting on
+backend, then never removes the stub" pattern in two months, cited the prior decisions, and
+proposed two structural countermeasures. The blindfold leaked in one place — it ran `grep`
+against source and read the matched lines, which the prompt's "search for existence, don't
+read the body" rule technically forbids. Tightening the prompt would close the gap; the
+result here didn't suffer.
+
+The two critics earned their slots. **Plan-critic** ran four rounds, each adding a downstream
+consumer the architect couldn't see (because the architect couldn't follow dataflow into
+source and the wiki didn't enumerate every callsite). Without it the fix would have shipped
+a symptom-cure + new regression at a different surface. **Solution-critic** found three more
+issues post-implementation: a test case that wasn't independently falsifiable, a truth-table
+corner the plan had punted that turned out to matter, and a minor wiki-schema deviation. Two
+were real correctness improvements; one was honestly deferred.
+
+The total round count (4 + 2) was higher than I'd have guessed for what started as a two-line
+bug fix, and the final diff covered four files plus a postmortem. But each round genuinely
+added something the previous stage had missed. The loop was arguably *more* valuable on a
+small fix than it would have been on a big architectural decision — small fixes are the
+easiest to ship half-done.
+
 ## What we're watching for
 
 A few open questions we'll learn from over the next month:
