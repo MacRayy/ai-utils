@@ -442,10 +442,14 @@ not guessed.
 This seed is designed to sit alongside `wiki-seed.md` and `agents-seed.md`. All three patch or
 create the same `CLAUDE.md`, so coordinate rather than overwrite.
 
-- **Order.** If the user is running more than one, a good order is: this seed first (creates the
-  `CLAUDE.md` body), then `wiki-seed.md` and `agents-seed.md` (each inserts its own snippet near
-  the top). Running them in the other order is fine too — this seed detects their output and keeps
-  it.
+- **Order — run this seed LAST.** If the user is running more than one, do `wiki-seed.md` and
+  `agents-seed.md` first, then this one. This seed is the structural owner of `CLAUDE.md`: it reads
+  the file the other two produced, reshapes everything into the full skeleton, and keeps their
+  snippets in the right slots (per bootstrap step 7). It also wires cross-references that only work
+  if the targets already exist — e.g. §A's Architecture section points at `wiki/architecture.md`
+  only when a `wiki/` folder is present. Run it first and those links can't be made, and the other
+  two seeds will insert their snippets "near the top" without knowing the skeleton's layout. Running
+  it first still works, just less cleanly — it detects and preserves whatever the others add later.
 
 - **Wiki slot.** If a `wiki/` folder exists, keep (or insert) the wiki integration snippet at the
   WIKI SLOT in §A. That snippet is owned by `wiki-seed.md` (its §C) — don't duplicate it here; if
