@@ -16,6 +16,11 @@ follows the embedded bootstrap instructions to generate the actual files.
 - `ai-seeds/agents-seed.md` — bootstraps six Claude Code subagents (`architect`, `plan-critic`,
   `solution-critic`, `reviewer`, `git-precommit`, `git-organizer`) plus three protocol sections
   for the host project's `CLAUDE.md`. Pairs with the wiki seed; degrades gracefully without it.
+- `ai-seeds/claude-md-seed.md` — bootstraps the host project's main `CLAUDE.md` from a discovery
+  procedure: detects the stack (.NET / Node-TS / Python / React / React Native / polyglot
+  monorepo), extracts the real toolchain commands, and fills a section skeleton. Ships a skeleton
+  (§A), per-stack cheat sheets (§B), a discovery procedure (§C), and composition rules for the
+  wiki and agents seeds (§D). Composes with both other seeds; stands alone without them.
 
 ### `code-quality-tools/` — copy-in lint / format / type-check baseline
 

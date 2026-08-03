@@ -17,6 +17,11 @@ expands it into a working setup (subagent files, wiki scaffolding, etc.).
   `solution-critic`, `reviewer`, `git-precommit`, `git-organizer`) plus three protocol sections
   for the host project's `CLAUDE.md`: plan-mode challenge, implementation challenge, optional
   pre-PR architectural self-check. Pairs with `wiki-seed.md`; works standalone too.
+- **`claude-md-seed.md`** — bootstraps the host project's main `CLAUDE.md`. Detects the stack
+  (.NET, Node/TypeScript, Python, React, React Native, or a polyglot monorepo), pulls the real
+  format/lint/typecheck/test/run commands out of the repo's own manifests, and fills a section
+  skeleton — so the result is grounded in the actual project, not a generic template. Composes
+  with the wiki and agents seeds; works standalone.
 
 To use a seed in a fresh agent session:
 
