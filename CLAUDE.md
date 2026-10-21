@@ -13,9 +13,12 @@ follows the embedded bootstrap instructions to generate the actual files.
 
 - `ai-seeds/wiki-seed.md` — bootstraps a `wiki/` knowledge base (schema + page templates +
   empty subfolders + integration snippet for the host project's agent instructions).
-- `ai-seeds/agents-seed.md` — bootstraps six Claude Code subagents (`architect`, `plan-critic`,
-  `solution-critic`, `reviewer`, `git-precommit`, `git-organizer`) plus three protocol sections
-  for the host project's `CLAUDE.md`. Pairs with the wiki seed; degrades gracefully without it.
+- `ai-seeds/agents-seed.md` — bootstraps a set of Claude Code subagents (`architect`, `plan-critic`,
+  `solution-critic`, `reviewer`, `git-precommit`, `git-organizer`, `trap-learn`, + optional
+  `sensitive-data-auditor`), a shared `.claude/checks.md` the agents read at runtime, and protocol
+  sections for the host project's `CLAUDE.md` (plan-mode challenge, implementation challenge with a
+  verify + trap-learn step, optional pre-PR self-check). Pairs with the wiki seed; degrades
+  gracefully without it.
 - `ai-seeds/claude-md-seed.md` — bootstraps the host project's main `CLAUDE.md` from a discovery
   procedure: detects the stack (.NET / Node-TS / Python / React / React Native / polyglot
   monorepo), extracts the real toolchain commands, and fills a section skeleton. Ships a skeleton
@@ -46,10 +49,11 @@ Every seed follows the same three-part shape:
    host project's main agent-instructions file. File contents are fenced with **four backticks**
    so embedded three-backtick examples render cleanly.
 
-`agents-seed.md` adds a **§C — Customization seams** section with bracketed placeholders
-(`<DEFAULT_BRANCH>`, `<HELPER_LOCATIONS>`, `<PROJECT_TRAPS>`, etc.) that the host agent fills in
-with the user before writing files. Walk these with the user first; don't write files with
-placeholders still in them.
+`agents-seed.md` adds a **§C — `.claude/checks.md`** section: a single project-knobs file
+(`default_branch`, `commands`, `helper_locations`, `forbidden_files`, `project_traps`,
+`conventions`, `reviewer_patterns`, `test_globs`) that the generic agent files read at runtime.
+Walk it with the user before writing the agents — but the agents also fail soft if it's missing.
+The agents themselves carry no inlined project values; keep it that way so they stay reusable.
 
 ## Project knowledge base — `wiki/`
 

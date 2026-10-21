@@ -13,10 +13,14 @@ expands it into a working setup (subagent files, wiki scaffolding, etc.).
   templates for decisions / bugs / hacks / tech-debt / runbooks / features / integrations /
   workflows, a `_log.md` changelog, and an integration snippet for the host project's main
   agent-instructions file.
-- **`agents-seed.md`** — bootstraps six Claude Code subagents (`architect`, `plan-critic`,
-  `solution-critic`, `reviewer`, `git-precommit`, `git-organizer`) plus three protocol sections
-  for the host project's `CLAUDE.md`: plan-mode challenge, implementation challenge, optional
-  pre-PR architectural self-check. Pairs with `wiki-seed.md`; works standalone too.
+- **`agents-seed.md`** — bootstraps a set of Claude Code subagents (`architect`, `plan-critic`,
+  `solution-critic`, `reviewer`, `git-precommit`, `git-organizer`, `trap-learn`, and an optional
+  `sensitive-data-auditor`) plus protocol sections for the host project's `CLAUDE.md`: plan-mode
+  challenge, implementation challenge (with a behavioral **verify** step and a **trap-learn**
+  self-improvement step), and an optional pre-PR architectural self-check. All project-specific
+  knobs live in one `.claude/checks.md` the agents read at runtime — so the agents stay generic
+  (shippable as a team plugin) and the critic loop can teach itself via `trap-learn`. Pairs with
+  `wiki-seed.md`; works standalone too.
 - **`claude-md-seed.md`** — bootstraps the host project's main `CLAUDE.md`. Detects the stack
   (.NET, Node/TypeScript, Python, React, React Native, or a polyglot monorepo), pulls the real
   format/lint/typecheck/test/run commands out of the repo's own manifests, and fills a section
@@ -44,6 +48,28 @@ project's layout.
   trailing commas, `lf` line endings.
 - **`tsconfig.json`** — strict-mode TS baseline (`ES2024`, `bundler` resolution, `react-jsx`,
   `noEmit`). Add your own `include` and `paths` for your source layout.
+
+## Recommended companion tools
+
+### [rtk](https://github.com/rtk-ai/rtk) — command-output compression for the agent loop
+
+The agents from `agents-seed.md` are bash-heavy: `git-precommit`, `solution-critic`, and `reviewer`
+all run `git diff`, lint, typecheck, and the test suite, and most of that output is noise the model
+pays tokens to read. **rtk** sits on the bash tool call and filters, groups, dedupes, and truncates
+that output before the agent sees it — typically **60–90% fewer tokens** on exactly the commands
+this loop runs the most. Built-in tools (`Read`, `Glob`, …) are untouched.
+
+It's the cheapest way to make "run several critics on every task" affordable. Install once,
+globally — it's not a per-repo artifact:
+
+```bash
+brew install rtk          # macOS/Linux (or: winget install rtk-ai.rtk)
+rtk init -g               # install the Claude Code hook (use --agent cursor / --gemini for others)
+rtk gain                  # see how many tokens it's saving you
+```
+
+Single Rust binary, <10 ms overhead, no command/file content collected. Pairs naturally with the
+critic loop: the gates get much cheaper without changing a line in any agent.
 
 ## License
 
