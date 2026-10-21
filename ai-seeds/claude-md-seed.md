@@ -458,7 +458,10 @@ create the same `CLAUDE.md`, so coordinate rather than overwrite.
 
 - **Protocols slot.** If `.claude/agents/` exists, keep (or insert) the challenge-protocol sections
   at the PROTOCOLS SLOT. Those are owned by `agents-seed.md` (its §B). If there are no agents,
-  delete the slot.
+  delete the slot. When the agents are present they read their project-specific knobs from
+  `.claude/checks.md` (also owned by `agents-seed.md`, its §C) — so `CLAUDE.md` should not duplicate
+  helper locations / traps / forbidden-file lists inline; point at `.claude/checks.md` instead and
+  keep a single source of truth.
 
 - **No wiki, no agents.** The `CLAUDE.md` this seed produces still stands on its own — it just
   omits those two sections.
@@ -485,7 +488,7 @@ handful of things no repo scan reveals: the conventions and the war stories.
 - **`wiki-seed.md`** — the deep, living knowledge base. `CLAUDE.md` stays short and points at
   `wiki/` for architecture, decisions, and postmortems.
 - **`agents-seed.md`** — the critic/gate sub-agents and the challenge protocols that this
-  `CLAUDE.md` hosts.
+  `CLAUDE.md` hosts. Their project-specific knobs live in `.claude/checks.md`, not inline here.
 - **`code-quality-tools/`** — the lint/format/type configs whose commands this `CLAUDE.md`'s
   "Common commands" section points the agent at.
 
