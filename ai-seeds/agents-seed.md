@@ -30,6 +30,10 @@ Plus protocols in your project's `CLAUDE.md`:
 - **Pre-PR architectural self-check** — optional architect re-invocation against the PR description
   for shape-novel changes.
 
+And an **optional enforcement hook** (§E) that makes the plan gate load-bearing: a `PreToolUse` hook
+that blocks `ExitPlanMode` until `plan-critic` has approved. Opt-in, fail-open, and it does not
+remove human plan review.
+
 The goal is to make strategic critique a normal step in the loop, not a special occasion. The
 critics are skeptical by default, return JSON verdicts the main agent must honor, and read the
 codebase (or wiki, for architect) to ground their concerns.
@@ -93,6 +97,10 @@ When the user asks you to bootstrap from `agents-seed.md`:
 3. **Add the protocol sections in §B** to the project's main `CLAUDE.md` (or `AGENTS.md`, etc.). If
    the file doesn't exist, create it. Insert the protocols below any project-overview text but above
    task-specific guidance, so the agent sees them early.
+
+   **If the user wants enforcement**, also create the §E hook (`.claude/hooks/require-plan-critic.py`)
+   and merge its settings entry into `.claude/settings.json` without clobbering existing hooks. Skip
+   §E otherwise — the protocols still run on the honor system.
 
 4. **Stop and tell the user** the agents are seeded, where the knobs live (`.claude/checks.md`), and
    which protocols are active. Suggest running the next non-trivial task through plan mode to see the
@@ -707,6 +715,11 @@ so the agent sees the protocols early. Keep them in the order shown; they refere
 > *before* that, so what reaches the human is already vetted. The protocol adds an automated
 > pre-check; it does not replace human sign-off.
 >
+> **Enforced (optional):** by default this gate is honor-system — nothing stops the main agent from
+> skipping `plan-critic`. §E ships an optional `PreToolUse` hook that *blocks* `ExitPlanMode` until
+> `plan-critic` has approved, turning the protocol into a real gate. It's fail-open and scoped to
+> repos that opted in, and it does not remove human plan review.
+>
 > ## Implementation challenge protocol
 >
 > After lint/typecheck/tests pass and before declaring the task done:
@@ -861,12 +874,243 @@ __tests__/**. Delete this section if the defaults cover you. -->
 
 ---
 
+## §E — Optional enforcement hook (make the plan gate load-bearing)
+
+The §B protocols are honor-system: they *tell* the main agent to run `plan-critic` before
+`ExitPlanMode`, but nothing *stops* it from skipping straight to `ExitPlanMode`. Most of the time
+that's fine. If you find the plan gate getting skipped — or you just want the gate to be real — add
+this `PreToolUse` hook. It **blocks** `ExitPlanMode` until `plan-critic` has returned
+`{"verdict":"approved"}` in the current plan cycle.
+
+Create this only if the user asks for enforcement (it's opt-in). Two parts: the script, and a
+settings entry that wires it to the `ExitPlanMode` tool.
+
+### `.claude/hooks/require-plan-critic.py`
+
+````python
+#!/usr/bin/env python3
+"""PreToolUse gate for ExitPlanMode.
+
+Blocks ExitPlanMode until the `plan-critic` sub-agent has returned an "approved" verdict in the
+current plan cycle (i.e. after the most recent prior ExitPlanMode that actually left plan mode).
+This turns the honor-system plan-critique protocol in CLAUDE.md into an actual gate.
+
+Design notes:
+- Self-scoping: it only enforces in a repo that opted into the critic loop, detected by the
+  presence of `.claude/agents/plan-critic.md` at or above the session cwd. So installing it in
+  user-global settings does nothing in unrelated projects — it just no-ops there.
+- Precise matching: it pairs a Task/Agent tool_use whose subagent_type names plan-critic with that
+  call's tool_result and reads the verdict from the result — it does NOT merely grep for the string
+  "plan-critic" (which also appears in the ambient agent list).
+- Background/async sessions: when sub-agents run detached, the dispatch's immediate tool_result is
+  only an "Async agent launched" placeholder and the verdict lands later as a task-notification
+  entry. The gate therefore ALSO accepts an approved verdict found in any window entry whose
+  flattened text carries a known plan-critic dispatch id (so an unrelated "approved" string can't
+  satisfy it).
+- Window advance: only a GENUINE successful ExitPlanMode (the user approved the plan) begins a new
+  plan cycle. A blocked exit (denied by this hook) or a user-rejected exit keeps us in the SAME
+  cycle, so it must NOT advance the window — otherwise each non-exit pushes the cycle boundary past
+  an approval that already landed and the gate can never be satisfied ("stuck in plan mode").
+- Fail-open: any error, missing transcript, or unparseable line => allow. A buggy gate must never
+  brick plan mode. (A missing python3 makes the hook exit non-2, which is also non-blocking.)
+- Block mechanism: exit code 2 with a message on stderr (shown to the model). Exit 0 allows.
+"""
+import json
+import os
+import re
+import sys
+
+ALLOW = 0
+BLOCK = 2
+
+APPROVED_RE = re.compile(r'"verdict"\s*:\s*"approved"')
+# A tool_result that marks an ExitPlanMode that ACTUALLY left plan mode (user approved the plan).
+# The harness emits this exact copy on a successful exit; blocked/rejected exits never carry it.
+EXIT_SUCCESS_RE = re.compile(r"User has approved your plan|You can now start coding")
+
+
+def _opted_in(cwd):
+    """True if this repo ships a plan-critic agent (at cwd or any parent)."""
+    if not cwd:
+        return False
+    d = os.path.abspath(cwd)
+    while True:
+        if os.path.isfile(os.path.join(d, ".claude", "agents", "plan-critic.md")):
+            return True
+        parent = os.path.dirname(d)
+        if parent == d:
+            return False
+        d = parent
+
+
+def _text_of(content):
+    """Flatten a message/tool_result content (str | list of blocks) to plain text."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        out = []
+        for block in content:
+            if isinstance(block, dict):
+                if isinstance(block.get("text"), str):
+                    out.append(block["text"])
+                elif isinstance(block.get("content"), (str, list)):
+                    out.append(_text_of(block["content"]))
+            elif isinstance(block, str):
+                out.append(block)
+        return "\n".join(out)
+    return ""
+
+
+def main():
+    try:
+        event = json.load(sys.stdin)
+    except Exception:
+        return ALLOW  # can't read the event -> don't interfere
+
+    if event.get("tool_name") != "ExitPlanMode":
+        return ALLOW
+
+    if not _opted_in(event.get("cwd") or ""):
+        return ALLOW  # only enforce where a plan-critic agent is installed
+
+    transcript_path = event.get("transcript_path")
+    if not transcript_path:
+        return ALLOW
+
+    try:
+        with open(transcript_path, encoding="utf-8") as fh:
+            lines = [json.loads(ln) for ln in fh if ln.strip()]
+    except Exception:
+        return ALLOW
+
+    # Pair each ExitPlanMode tool_use with its tool_result; advance the cycle window only on a
+    # genuine success marker (see "Window advance" in the module docstring).
+    exit_use_line = {}  # ExitPlanMode tool_use id -> line index
+    for i, entry in enumerate(lines):
+        try:
+            msg = entry.get("message", entry)
+            content = msg.get("content")
+            if not isinstance(content, list):
+                continue
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "tool_use" \
+                        and block.get("name") == "ExitPlanMode" and block.get("id"):
+                    exit_use_line[block["id"]] = i
+        except Exception:
+            continue
+
+    last_exit = -1
+    for entry in lines:
+        try:
+            msg = entry.get("message", entry)
+            content = msg.get("content")
+            if not isinstance(content, list):
+                continue
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "tool_result" \
+                        and block.get("tool_use_id") in exit_use_line \
+                        and EXIT_SUCCESS_RE.search(_text_of(block.get("content"))):
+                    idx = exit_use_line[block["tool_use_id"]]
+                    if idx > last_exit:
+                        last_exit = idx
+        except Exception:
+            continue
+
+    plan_critic_ids = set()   # tool_use ids of plan-critic dispatches in this cycle
+    approved = False
+    for entry in lines[last_exit + 1:]:
+        try:
+            msg = entry.get("message", entry)
+            content = msg.get("content")
+            # 1) Collect plan-critic dispatch ids + catch the SYNCHRONOUS verdict (an interactive
+            #    session records the verdict as the tool_result paired to the dispatch by id).
+            if isinstance(content, list):
+                for block in content:
+                    if not isinstance(block, dict):
+                        continue
+                    btype = block.get("type")
+                    if btype == "tool_use" and block.get("name") in ("Task", "Agent"):
+                        sub = str((block.get("input") or {}).get("subagent_type", ""))
+                        if "plan-critic" in sub and block.get("id"):
+                            plan_critic_ids.add(block["id"])
+                    elif btype == "tool_result":
+                        tid = block.get("tool_use_id")
+                        if tid in plan_critic_ids and APPROVED_RE.search(_text_of(block.get("content"))):
+                            approved = True
+            # 2) ASYNC / background sub-agents: the real verdict arrives later as a task-notification
+            #    entry whose flattened text carries BOTH the dispatching tool_use id and the verdict
+            #    JSON. Tie the approval to a known dispatch id so an unrelated "approved" string can't
+            #    satisfy the gate.
+            full_text = _text_of(content)
+            if full_text and APPROVED_RE.search(full_text) \
+                    and any(pid in full_text for pid in plan_critic_ids):
+                approved = True
+        except Exception:
+            continue
+
+    if approved:
+        return ALLOW
+
+    sys.stderr.write(
+        "Blocked: ExitPlanMode requires an approved plan-critic verdict first (critic-loop "
+        "protocol, CLAUDE.md). Dispatch the `plan-critic` sub-agent on this plan, address its "
+        "concerns, and re-dispatch until it returns {\"verdict\":\"approved\"}, then call "
+        "ExitPlanMode again. If this change is genuinely trivial, it shouldn't be in plan mode "
+        "at all.\n"
+    )
+    return BLOCK
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+````
+
+### Wire it into `.claude/settings.json`
+
+Add this to the project's `.claude/settings.json` (committed, so it applies for everyone on the
+repo — use `.claude/settings.local.json` instead if you want it only for yourself). **Merge** into
+any existing `hooks` block; do not clobber other hooks already there.
+
+````json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "ExitPlanMode",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/require-plan-critic.py\""
+          }
+        ]
+      }
+    ]
+  }
+}
+````
+
+### Notes
+
+- **It does not remove human plan review.** The hook gates `ExitPlanMode` on the *plan-critic*
+  (automated), and `ExitPlanMode` is exactly the step that then presents the finished plan to the
+  *human* for approval. Net order: plan-critic → human → dev. The hook just guarantees the automated
+  critique ran first.
+- **Requires `python3` on PATH.** If it's missing the hook exits non-2, which is non-blocking, so
+  plan mode still works — you just lose enforcement.
+- **If you ship the agents as a plugin** (see "Packaging for a team"), put the hook in the plugin's
+  `hooks/hooks.json` instead, invoked via `${CLAUDE_PLUGIN_ROOT}`, so enforcement travels with the
+  agents. The self-scoping (`.claude/agents/plan-critic.md` presence) can then be swapped for a
+  workspace-path check, since a plugin install won't drop that file into the repo.
+
+---
+
 ## Optional removals
 
 - If your project doesn't use a wiki, `architect` becomes less useful — it falls back to reading
   only tests. Pair this seed with `wiki-seed.md` for the full effect.
 - If you don't want the pre-PR self-check, simply don't add that section to `CLAUDE.md`.
 - If you don't want the security sweep, skip the optional `sensitive-data-auditor` agent in §A.
+- If you don't want enforcement, skip §E — the protocols still run on the honor system.
 
 ---
 

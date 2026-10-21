@@ -17,7 +17,8 @@ follows the embedded bootstrap instructions to generate the actual files.
   `solution-critic`, `reviewer`, `git-precommit`, `git-organizer`, `trap-learn`, + optional
   `sensitive-data-auditor`), a shared `.claude/checks.md` the agents read at runtime, and protocol
   sections for the host project's `CLAUDE.md` (plan-mode challenge, implementation challenge with a
-  verify + trap-learn step, optional pre-PR self-check). Pairs with the wiki seed; degrades
+  verify + trap-learn step, optional pre-PR self-check, and an optional `PreToolUse` enforcement
+  hook that blocks `ExitPlanMode` until `plan-critic` approves). Pairs with the wiki seed; degrades
   gracefully without it.
 - `ai-seeds/claude-md-seed.md` — bootstraps the host project's main `CLAUDE.md` from a discovery
   procedure: detects the stack (.NET / Node-TS / Python / React / React Native / polyglot

@@ -78,11 +78,22 @@ Two smaller things worth recording:
   output is noise the model pays to read. We added a pointer to [rtk](https://github.com/rtk-ai/rtk),
   a command-output compressor that cuts 60–90% of those tokens on the bash tool call without
   touching any agent. It's the cheapest way to make "critic loop on every task" affordable.
-- **The §B protocols are still honor-system** — "only call `ExitPlanMode` once the critic
-  approved." In a project where that mattered we backed it with a `PreToolUse` hook that actually
-  blocks the tool until the verdict is present. We left the hook out of the generic seed on purpose
-  (it's an operator-level enforcement choice, fail-open and workspace-scoped, not something to
-  impose by default), but it's the obvious next step if a team finds the protocol getting skipped.
+- **The §B protocols are honor-system by default**, now with an opt-in way to make them real. §E
+  ships a `PreToolUse` hook that *blocks* `ExitPlanMode` until `plan-critic` has approved. We ported
+  the version that survived real use, and two of its details are worth calling out because they're
+  non-obvious until they bite you:
+  - **Only a genuine successful exit advances the plan-cycle window.** Early versions advanced the
+    window on *any* `ExitPlanMode`, including one the hook itself just blocked. The result was a
+    "stuck in plan mode" loop: each blocked attempt pushed the cycle boundary past the approval that
+    had already landed, so the gate could never be satisfied. The fix keys the window to the
+    harness's success marker ("User has approved your plan") and ignores blocked/rejected exits.
+  - **Background sessions deliver the verdict out-of-band.** When the critic runs detached, the
+    dispatch's immediate tool_result is just an "Async agent launched" placeholder; the real verdict
+    arrives later as a task-notification. The gate accepts an approved verdict carrying a known
+    plan-critic dispatch id, so async runs aren't falsely blocked — without letting an unrelated
+    "approved" string satisfy it.
+  It's kept opt-in (fail-open, and self-scoped to repos that actually ship a `plan-critic` agent) so
+  installing the agents never silently changes how plan mode behaves in an unrelated project.
 
 ## Why this fits the existing design
 

@@ -17,7 +17,8 @@ expands it into a working setup (subagent files, wiki scaffolding, etc.).
   `solution-critic`, `reviewer`, `git-precommit`, `git-organizer`, `trap-learn`, and an optional
   `sensitive-data-auditor`) plus protocol sections for the host project's `CLAUDE.md`: plan-mode
   challenge, implementation challenge (with a behavioral **verify** step and a **trap-learn**
-  self-improvement step), and an optional pre-PR architectural self-check. All project-specific
+  self-improvement step), an optional pre-PR architectural self-check, and an optional **enforcement
+  hook** that blocks `ExitPlanMode` until `plan-critic` approves. All project-specific
   knobs live in one `.claude/checks.md` the agents read at runtime — so the agents stay generic
   (shippable as a team plugin) and the critic loop can teach itself via `trap-learn`. Pairs with
   `wiki-seed.md`; works standalone too.
