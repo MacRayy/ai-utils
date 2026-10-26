@@ -24,7 +24,8 @@ Plus protocols in your project's `CLAUDE.md`:
 
 - **Plan mode challenge protocol** — two-stage critic loop (architect → draft → plan-critic) that
   gates `ExitPlanMode`.
-- **Implementation challenge protocol** — a behavioral **verify** step, a solution-critic gate that
+- **Implementation challenge protocol** — a behavioral **verify** step, then a gate **routed by task
+  shape** (solution-critic for planned work, a cheaper-tier reviewer for small unplanned changes) that
   runs after lint/typecheck/tests pass, and a **trap-learn** step that turns recurring findings into
   durable rules. Gates "task done."
 - **Pre-PR architectural self-check** — optional architect re-invocation against the PR description
@@ -729,14 +730,29 @@ so the agent sees the protocols early. Keep them in the order shown; they refere
 >    drive the real flow (run the end-to-end spec, or manually exercise it) and record what you did
 >    and observed. This evidence is what `solution-critic` checks for. Skip only for changes with no
 >    user-visible surface (pure refactors with unchanged behavior, internal tooling).
-> 2. Dispatch the `solution-critic` subagent via the Agent tool, passing a one-paragraph summary of
->    intent as the prompt. The critic reads `git diff` itself — do not paraphrase the changes.
-> 3. If the critic returns `"needs_revision"`, address every concern (fix the code, add tests, update
+> 2. **Critique — pick the gate by task shape.** Both critics read `git diff` themselves; don't
+>    paraphrase the changes.
+>    - **Planned task** (went through plan mode, or is multi-file / behavior-changing) → dispatch
+>      `solution-critic` with a one-paragraph summary of intent. Its job is *intent-conformance +
+>      completeness* — scope drift, loose ends, weak tests, missed wiki update, reinvented utilities —
+>      which only pays off when there's a plan/intent to measure against.
+>    - **Unplanned, non-trivial task** (a small, single-concern change made directly, with no plan) →
+>      skip `solution-critic` and dispatch `reviewer` instead, **on a cheaper model tier** (override its
+>      `opus` default with `sonnet`) since the diff is small. With no plan there's no scope to drift
+>      from, so the higher-value gate is the tactical-bug pass — and a small diff doesn't need the top
+>      tier. The thorough whole-branch `reviewer` still runs once at PR time on its default tier.
+> 3. **Scale the critic to the change.** Match the model (and reasoning effort, where the tool exposes
+>    it) to the diff size rather than a fixed tier: a one-hunk fix on a cheap tier; a large or
+>    security-sensitive change on the critic's default. This is the main token lever in the loop — the
+>    critics are the bash-heavy, repeatedly-dispatched step (see *A note on token cost* below). The
+>    frontmatter `model:` pins stay as the default; the tiering is a per-dispatch override, not an edit
+>    to the agent files.
+> 4. If the critic returns `"needs_revision"`, address every concern (fix the code, add tests, update
 >    the wiki, supply the missing behavioral evidence, etc.) and re-dispatch.
-> 4. Only declare the task complete once the critic returns `"approved"`.
-> 5. Cap at **5 rounds**. If still not satisfied after 5 rounds, surface the remaining concerns to the
+> 5. Only declare the task complete once the critic returns `"approved"`.
+> 6. Cap at **5 rounds**. If still not satisfied after 5 rounds, surface the remaining concerns to the
 >    user.
-> 6. **Promote recurring findings.** If a concern the critic raised (or the reviewer caught, or a bug
+> 7. **Promote recurring findings.** If a concern the critic raised (or the reviewer caught, or a bug
 >    produced) has now shown up more than once, dispatch the `trap-learn` subagent with that finding
 >    so it becomes a durable rule in `.claude/checks.md`. Next time, the critics catch it
 >    automatically. One finding, filed once, pays off on every future task.
@@ -1135,7 +1151,8 @@ This works because each critic has a specific question to answer:
   the behavior actually verified?"** — reads `git diff` directly so summaries can't paper over
   scope drift, and refuses to accept "tests pass" as proof a user-visible change works.
 - `reviewer` asks **"are there tactical bugs?"** — the tight, project-tuned list that lint can't
-  catch.
+  catch. It pulls double duty: the during-work gate for small *unplanned* changes (on a cheap tier),
+  and the thorough whole-branch pass at PR time (on its default tier).
 - `trap-learn` asks **"should this lesson become a permanent check?"** — so the loop gets smarter
   instead of re-learning the same trap every quarter.
 - `git-precommit` and `git-organizer` are mechanical safety nets — they prevent the mistakes
