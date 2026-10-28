@@ -27,6 +27,14 @@ expands it into a working setup (subagent files, wiki scaffolding, etc.).
   format/lint/typecheck/test/run commands out of the repo's own manifests, and fills a section
   skeleton — so the result is grounded in the actual project, not a generic template. Composes
   with the wiki and agents seeds; works standalone.
+- **`merge-risk-seed.md`** — bootstraps a risk-based merge-review gate
+  ([`attrecto/merge-risk`](https://github.com/attrecto/merge-risk)): generates a `.merge-risk.yml`
+  tuned to the repo's real risk surface via a stack-aware risk survey (auth / token / secrets /
+  migrations / money / crypto-certs / infra → `very-risky`; docs / i18n / tests / stories / assets →
+  `safe`; everything else → `risky`), validates the scoring, and wires the GitHub Action or GitLab CI
+  job — with the three-tier model (and why not four), the approval-count dial, and the traps that bite
+  everyone first (GitLab status-name collision, masked-not-protected token, base-branch bootstrap,
+  approval-doesn't-re-run). The deterministic companion to the `agents-seed.md` critic loop.
 
 To use a seed in a fresh agent session:
 
