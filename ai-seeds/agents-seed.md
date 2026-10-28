@@ -920,9 +920,10 @@ Design notes:
   "plan-critic" (which also appears in the ambient agent list).
 - Background/async sessions: when sub-agents run detached, the dispatch's immediate tool_result is
   only an "Async agent launched" placeholder and the verdict lands later as a task-notification
-  entry. The gate therefore ALSO accepts an approved verdict found in any window entry whose
-  flattened text carries a known plan-critic dispatch id (so an unrelated "approved" string can't
-  satisfy it).
+  entry keyed by the runtime agent/task id, NOT the dispatch's tool_use id. The gate resolves that
+  agent id from the placeholder and accepts an approved verdict whose flattened text carries EITHER
+  token — the dispatch tool_use id or its resolved agent id (so an unrelated "approved" string, which
+  carries neither, still can't satisfy it).
 - Window advance: only a GENUINE successful ExitPlanMode (the user approved the plan) begins a new
   plan cycle. A blocked exit (denied by this hook) or a user-rejected exit keeps us in the SAME
   cycle, so it must NOT advance the window — otherwise each non-exit pushes the cycle boundary past
@@ -943,6 +944,11 @@ APPROVED_RE = re.compile(r'"verdict"\s*:\s*"approved"')
 # A tool_result that marks an ExitPlanMode that ACTUALLY left plan mode (user approved the plan).
 # The harness emits this exact copy on a successful exit; blocked/rejected exits never carry it.
 EXIT_SUCCESS_RE = re.compile(r"User has approved your plan|You can now start coding")
+# A dispatched sub-agent's async placeholder tool_result names the runtime agent/task id (e.g.
+# "agentId: a81b54a6028cacb53"); the later verdict arrives in a task-notification keyed by THAT id,
+# not by the dispatch's tool_use id. We resolve it so the async branch can tie an approved verdict
+# to a known plan-critic dispatch even though the two ids differ.
+AGENT_ID_RE = re.compile(r"agent[_ ]?id\D{0,4}([0-9a-f]{6,})", re.I)
 
 
 def _opted_in(cwd):
@@ -1032,7 +1038,8 @@ def main():
         except Exception:
             continue
 
-    plan_critic_ids = set()   # tool_use ids of plan-critic dispatches in this cycle
+    plan_critic_ids = set()      # tool_use ids of plan-critic dispatches in this cycle
+    plan_critic_tokens = set()   # those ids PLUS any runtime agent/task ids they resolved to
     approved = False
     for entry in lines[last_exit + 1:]:
         try:
@@ -1049,17 +1056,24 @@ def main():
                         sub = str((block.get("input") or {}).get("subagent_type", ""))
                         if "plan-critic" in sub and block.get("id"):
                             plan_critic_ids.add(block["id"])
+                            plan_critic_tokens.add(block["id"])
                     elif btype == "tool_result":
                         tid = block.get("tool_use_id")
-                        if tid in plan_critic_ids and APPROVED_RE.search(_text_of(block.get("content"))):
-                            approved = True
+                        if tid in plan_critic_ids:
+                            rtext = _text_of(block.get("content"))
+                            # The async dispatch's placeholder result names the agent/task id the
+                            # later verdict notification is keyed by — register it as a valid token.
+                            for aid in AGENT_ID_RE.findall(rtext):
+                                plan_critic_tokens.add(aid)
+                            if APPROVED_RE.search(rtext):
+                                approved = True
             # 2) ASYNC / background sub-agents: the real verdict arrives later as a task-notification
-            #    entry whose flattened text carries BOTH the dispatching tool_use id and the verdict
-            #    JSON. Tie the approval to a known dispatch id so an unrelated "approved" string can't
-            #    satisfy the gate.
+            #    entry keyed by the runtime agent/task id (NOT the dispatching tool_use id). Tie the
+            #    approval to a known plan-critic token — the dispatch tool_use id OR its resolved agent
+            #    id — so an unrelated "approved" string can't satisfy the gate.
             full_text = _text_of(content)
             if full_text and APPROVED_RE.search(full_text) \
-                    and any(pid in full_text for pid in plan_critic_ids):
+                    and any(tok in full_text for tok in plan_critic_tokens):
                 approved = True
         except Exception:
             continue
